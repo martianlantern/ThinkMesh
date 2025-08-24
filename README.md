@@ -2,6 +2,8 @@
 
 ThinkMesh is a python library for running  diverse reasoning paths in parallel, scoring them with internal confidence signals, reallocates compute to promising branches, and fuses outcomes with verifiers and reducers. It works with offline Hugging Face Transformers and vLLM/TGI, and with hosted APIs.
 
+> Note: This is still in it's early development phase and breaking changes can sometimes occur
+
 ## Highlights
 
 - Parallel reasoning with DeepConf‑style confidence gating and budget reallocation
@@ -14,12 +16,9 @@ ThinkMesh is a python library for running  diverse reasoning paths in parallel, 
 ## Install
 
 ```bash
-pip install thinkmesh
-pip install "thinkmesh[transformers]"
-pip install "thinkmesh[openai]"
-pip install "thinkmesh[anthropic]"
-pip install "thinkmesh[vllm]"
-pip install "thinkmesh[tgi]"
+git clone https://github.com/martianlantern/thinkmesh.git
+cd thinkmesh
+pip install -e ".[dev,transformers]"
 ```
 
 ## Quickstart: Offline DeepConf
@@ -129,3 +128,45 @@ Traces are emitted as JSON graphs inside the returned structure. Prometheus metr
 ## License
 
 MIT
+
+## References
+
+```bibex
+@misc{deepconf2025,
+  title         = {DeepConf: Deep Think with Confidence},
+  year          = {2025},
+  howpublished  = {\url{https://jiaweizzhao.github.io/deepconf/}}
+}
+
+@misc{wang2022selfconsistency,
+  title         = {Self-Consistency Improves Chain-of-Thought Reasoning in Language Models},
+  author        = {Wang, Xuezhi and Wei, Jason and others},
+  year          = {2022},
+  eprint        = {2203.11171},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL}
+}
+
+@misc{yao2023tree,
+  title         = {Tree of Thoughts: Deliberate Problem Solving with Large Language Models},
+  author        = {Yao, Shunyu and others},
+  year          = {2023},
+  eprint        = {2305.10601},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI}
+}
+```
+
+
+## Citation
+
+If you use this library in your work, please cite:
+
+```bibtex
+@software{thinkmesh2025,
+  title        = {ThinkMesh: Parallel Thinking for LLMs},
+  author       = {martianlantern},
+  year         = {2025},
+  note         = {Version 0.1.1},
+}
+```
