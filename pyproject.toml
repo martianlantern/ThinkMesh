@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "thinkmesh"
+version = "0.1.1"
+description = "Parallel thinking for LLMs with DeepConf-style confidence gating, offline/online backends, and async batching."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name="ThinkMesh Authors"}]
+dependencies = [
+  "pydantic>=2.7",
+  "anyio>=4.3",
+  "pluggy>=1.5",
+  "dataclasses-json>=0.6",
+  "typer>=0.12",
+  "structlog>=24.1",
+  "orjson>=3.10",
+  "prometheus-client>=0.20",
+  "opentelemetry-sdk>=1.24",
+  "diskcache>=5.6"
+]
+
+[project.optional-dependencies]
+transformers = ["transformers>=4.42", "accelerate>=0.31", "torch>=2.3"]
+vllm = ["vllm>=0.5", "openai>=1.40"]
+tgi = ["text-generation>=0.7"]
+openai = ["openai>=1.40"]
+anthropic = ["anthropic>=0.30"]
+obs = ["opentelemetry-exporter-otlp>=1.24"]
+dev = ["pytest>=8.3", "hypothesis>=6.104", "ruff>=0.5", "mypy>=1.11"]
+
+[project.scripts]
+thinkmesh = "thinkmesh.cli.thinkmesh_cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thinkmesh"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
