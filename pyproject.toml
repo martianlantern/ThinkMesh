@@ -30,7 +30,7 @@ tgi = ["text-generation>=0.7"]
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.30"]
 obs = ["opentelemetry-exporter-otlp>=1.24"]
-dev = ["pytest>=8.3", "hypothesis>=6.104", "ruff>=0.5", "mypy>=1.11"]
+dev = ["pytest>=8.3", "pytest-asyncio>=1.20", "hypothesis>=6.104", "ruff>=0.5", "mypy>=1.11"]
 
 [project.scripts]
 thinkmesh = "thinkmesh.cli.thinkmesh_cli:app"
