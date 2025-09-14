@@ -6,11 +6,15 @@ import asyncio
 import argparse
 import json
 import time
+import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+# Add tests directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "tests"))
+
 from thinkmesh import ThinkConfig, ModelSpec, StrategySpec
-from tests.benchmarks.gsm8k_utils import (
+from benchmarks.gsm8k_utils import (
     create_gsm8k_sample_dataset, run_gsm8k_benchmark,
     load_gsm8k_problems, BenchmarkSummary
 )

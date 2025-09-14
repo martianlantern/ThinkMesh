@@ -1,7 +1,7 @@
 import re
 from collections import Counter
 from typing import Dict, Any, List
-from ..core import Answer
+from ..types import Answer
 
 def normalize(x: str) -> str:
     s = x.strip().lower()

@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from ..core import Answer
+from ..types import Answer
 
 judge_prompt = "You are a strict judge comparing two candidate answers for the SAME question. Return JSON with keys winner (\"A\"|\"B\"|\"tie\"), scoreA (0..1), scoreB (0..1), rationale."
 

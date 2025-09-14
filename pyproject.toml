@@ -7,7 +7,7 @@ name = "thinkmesh"
 version = "0.1.1"
 description = "Parallel thinking for LLMs with DeepConf-style confidence gating, offline/online backends, and async batching."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [{name="ThinkMesh Authors"}]
 dependencies = [
@@ -42,5 +42,5 @@ packages = ["src/thinkmesh"]
 line-length = 100
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 strict = true

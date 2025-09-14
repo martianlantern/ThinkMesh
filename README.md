@@ -1,19 +1,8 @@
 # ThinkMesh
 
-ThinkMesh is a python library for running  diverse reasoning paths in parallel, scoring them with internal confidence signals, reallocates compute to promising branches, and fuses outcomes with verifiers and reducers. It works with offline Hugging Face Transformers and vLLM/TGI, and with hosted APIs.
+ThinkMesh is a Python library for running diverse reasoning paths in parallel with language models
 
-> Note: This is still in it's early development phase and breaking changes can sometimes occur
-
-## Highlights
-
-- Parallel reasoning with DeepConf‑style confidence gating and budget reallocation
-- Offline‑first with Transformers; optional vLLM/TGI for server‑side batching
-- Hosted adapters for OpenAI and Anthropic
-- Async execution with dynamic micro‑batches
-- Reducers (majority/judge) and pluggable verifiers (regex/numeric/custom)
-- Caching, metrics, and JSON traces
-
-## Install
+## Installation
 
 ```bash
 git clone https://github.com/martianlantern/thinkmesh.git
@@ -21,113 +10,177 @@ cd thinkmesh
 pip install -e ".[dev,transformers]"
 ```
 
-## Quickstart: Offline DeepConf
+## Basic Usage
 
 ```python
 from thinkmesh import think, ThinkConfig, ModelSpec, StrategySpec
 
-cfg = ThinkConfig(
-  model=ModelSpec(backend="transformers", model_name="Qwen2.5-7B-Instruct",
-                  max_tokens=256, temperature=0.7, seed=42, extra={"device":"cuda:0"}),
-  strategy=StrategySpec(name="deepconf", parallel=8, max_steps=2,
-                        deepconf={"k":5,"tau_low":-1.25,"tau_ent":2.2,"realloc_top_p":0.4}),
-  reducer={"name":"majority"},
-  budgets={"wall_clock_s":20,"tokens":4000},
+config = ThinkConfig(
+    model=ModelSpec(
+        backend="transformers",
+        model_name="Qwen2.5-7B-Instruct",
+        max_tokens=512,
+        temperature=0.7,
+        extra={
+            "device": "cuda:0", 
+            "dtype": "float16",
+            "batch_size": 16
+        }
+    ),
+    strategy=StrategySpec(
+        name="deepconf",
+        parallel=12,
+        max_steps=2,
+        deepconf={
+            "k": 5,
+            "tau_low": -1.0,
+            "realloc_top_p": 0.4
+        }
+    ),
+    budgets={"wall_clock_s": 60, "tokens": 8000}
 )
-ans = think("Show that the product of any three consecutive integers is divisible by 3.", cfg)
-print(ans.content, ans.confidence)
+
+answer = think("What is 2 + 2?", config)
+print(f"Answer: {answer.content}")
+print(f"Confidence: {answer.confidence:.3f}")
 ```
 
-## Quickstart: OpenAI Self‑Consistency
+## Strategies
+
+ThinkMesh supports five reasoning strategies:
+
+DeepConf: Two-stage reasoning with confidence-based filtering and compute reallocation. Best for complex mathematical proofs and multi-step reasoning problems.
+
+Self-Consistency: Generates multiple independent solutions and selects the most common answer via majority voting. Fast and effective for math problems and factual questions.
+
+Debate: Multiple agents argue different positions through several rounds of discussion. Good for controversial topics and validation of different perspectives.
+
+Tree of Thoughts: Systematic exploration of reasoning space using tree search with branching and depth control. Ideal for planning tasks and creative problem solving.
+
+Graph: Reasoning paths that can reference and build upon each other. Suitable for problems requiring integration of multiple interconnected concepts.
+
+## Configuration Examples
 
 ```python
-import os
-os.environ["OPENAI_API_KEY"] = "sk-..."
-from thinkmesh import think, ThinkConfig, ModelSpec, StrategySpec
-cfg = ThinkConfig(
-  model=ModelSpec(backend="openai", model_name="gpt-4o-mini", max_tokens=256, temperature=0.6),
-  strategy=StrategySpec(name="self_consistency", parallel=6, max_steps=1),
-  reducer={"name":"majority"},
-  budgets={"wall_clock_s":15,"tokens":3000},
+# Self-consistency for math problems
+self_config = ThinkConfig(
+    model=ModelSpec(backend="transformers", model_name="Qwen2.5-7B-Instruct"),
+    strategy=StrategySpec(name="self_consistency", parallel=8, max_steps=1)
 )
-print(think("List three creative uses for a paperclip.", cfg).content)
+
+# Debate for complex topics
+debate_config = ThinkConfig(
+    model=ModelSpec(backend="transformers", model_name="Qwen2.5-7B-Instruct"),
+    strategy=StrategySpec(name="debate", parallel=4, debate={"rounds": 3})
+)
+
+# Tree of thoughts for planning
+tree_config = ThinkConfig(
+    model=ModelSpec(backend="transformers", model_name="Qwen2.5-7B-Instruct"),
+    strategy=StrategySpec(name="tree", parallel=6, tree={"branches": 3, "depth": 2})
+)
 ```
 
-## CLI
+## Testing
+
+Run the full test suite:
 
 ```bash
-thinkmesh think -m Qwen2.5-7B-Instruct --backend transformers --strategy deepconf "What is 37*43?"
+python scripts/run_full_test_suite.py
 ```
+
+Run specific test categories:
+
+```bash
+pytest tests/unit/ -v
+pytest tests/integration/ -v  
+pytest tests/benchmarks/ -v
+```
+
+## Benchmarking
+
+Run GSM8K mathematical reasoning benchmarks:
+
+```bash
+python scripts/run_benchmarks.py --model medium_gpu --strategies deepconf_small self_consistency_small --num-problems 10
+
+python scripts/run_benchmarks.py --model large_gpu --strategies deepconf_large tree --num-problems 50
+```
+
+Generate performance reports:
+
+```bash
+python scripts/generate_report.py benchmark_results/
+```
+
+## Performance Monitoring
+
+```python
+from thinkmesh.production import PerformanceMonitor, validate_config
+
+# Validate configuration
+validation_result = validate_config(config)
+if validation_result["warnings"]:
+    print(f"Warnings: {validation_result['warnings']}")
+
+# Monitor performance
+monitor = PerformanceMonitor()
+monitor.start_monitoring()
+
+answer = think(problem, config)
+
+summary = monitor.get_performance_summary(minutes=30)
+print(f"Throughput: {summary['avg_tokens_per_second']:.0f} tokens/sec")
+```
+
+## Command Line Interface
+
+```bash
+# Basic usage
+thinkmesh think "What is the derivative of x^3?" --backend transformers --model Qwen2.5-7B-Instruct
+
+# With strategy options
+thinkmesh think "Solve this equation" --strategy deepconf --parallel 8 --device cuda:0
+```
+
+## Backends
+
+ThinkMesh supports multiple backends:
+
+Transformers: Local HuggingFace models with GPU acceleration
+vLLM: High-throughput inference server
+OpenAI/Anthropic: External model via API (This is not well tested yet) :' (
+TGI: Text Generation Inference server
 
 ## Examples
 
-### Debate Strategy (hosted)
+Mathematical reasoning examples:
 
-```python
-from thinkmesh import think, ThinkConfig, ModelSpec, StrategySpec
-cfg = ThinkConfig(
-  model=ModelSpec(backend="openai", model_name="gpt-4o-mini", max_tokens=256, temperature=0.7),
-  strategy=StrategySpec(name="debate", parallel=4, max_steps=2, debate={"rounds":2}),
-  reducer={"name":"judge"},
-  budgets={"wall_clock_s":25,"tokens":5000},
-)
-print(think("Argue whether every even integer > 2 is the sum of two primes.", cfg).content)
+```bash
+python examples/math_problems.py
 ```
 
-### vLLM Local Server
+GSM8K benchmarking workflow:
 
-```python
-from thinkmesh import think, ThinkConfig, ModelSpec, StrategySpec
-cfg = ThinkConfig(
-  model=ModelSpec(backend="vllm", model_name="Qwen2.5-7B-Instruct",
-                  max_tokens=256, temperature=0.7, extra={"base_url":"http://localhost:8000/v1","api_key":"sk-"}),
-  strategy=StrategySpec(name="deepconf", parallel=8, max_steps=2, deepconf={"k":5}),
-  reducer={"name":"majority"},
-  budgets={"wall_clock_s":20,"tokens":4000},
-)
-print(think("Give a constructive proof for the Pigeonhole Principle on a simple case.", cfg).content)
+```bash
+python examples/gsm8k_benchmark.py
 ```
 
-### Custom Verifier
+## Contributing
 
-```python
-from thinkmesh import think, ThinkConfig, ModelSpec, StrategySpec
-cfg = ThinkConfig(
-  model=ModelSpec(backend="transformers", model_name="Qwen2.5-7B-Instruct", max_tokens=128),
-  strategy=StrategySpec(name="self_consistency", parallel=5, max_steps=1),
-  reducer={"name":"majority"},
-  verifier={"type":"regex","pattern":r"Final Answer\s*:\s*.+$"},
-  budgets={"wall_clock_s":10,"tokens":1500},
-)
-print(think("Answer with 'Final Answer: <value>' for 19*21.", cfg).content)
+Development setup:
+
+```bash
+git clone https://github.com/martianlantern/thinkmesh.git
+cd thinkmesh
+pip install -e ".[dev,transformers]"
 ```
 
-### Tree Of Thought (offline)
+Run tests before submitting:
 
-```python
-from thinkmesh import think, ThinkConfig, ModelSpec, StrategySpec
-cfg = ThinkConfig(
-  model=ModelSpec(backend="transformers", model_name="Qwen2.5-7B-Instruct", max_tokens=192),
-  strategy=StrategySpec(name="tree", parallel=6, max_steps=2, tree={"branches":3,"depth":2}),
-  reducer={"name":"majority"},
-  budgets={"wall_clock_s":20,"tokens":3500},
-)
-print(think("Sketch a plan to prove that sqrt(2) is irrational.", cfg).content)
+```bash
+python scripts/run_full_test_suite.py --quick
 ```
-
-## Traces, Metrics, Caching
-
-Traces are emitted as JSON graphs inside the returned structure. Prometheus metrics and OpenTelemetry spans can be enabled via config extras. A local disk cache deduplicates repeated generations by hashing adapter, model, prompt, and params.
-
-## Extending
-
-- Implement a new backend by providing a `Thinker.generate` method that returns token text and optional token logprobs
-- Add a new strategy by wiring a function in `thinkmesh/strategies` and registering by name
-- Add reducers/verifiers under `thinkmesh/reduce`
-
-## License
-
-MIT
 
 ## References
 
@@ -157,16 +210,13 @@ MIT
 }
 ```
 
-
 ## Citation
-
-If you use this library in your work, please cite:
 
 ```bibtex
 @software{thinkmesh2025,
-  title        = {ThinkMesh: Parallel Thinking for LLMs},
-  author       = {martianlantern},
+  title        = {ThinkMesh: Parallel Reasoning for Language Models},
+  author       = {ThinkMesh Contributors},
   year         = {2025},
-  note         = {Version 0.1.1},
+  url          = {https://github.com/martianlantern/thinkmesh}
 }
 ```
