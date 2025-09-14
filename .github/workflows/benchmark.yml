@@ -1,0 +1,130 @@
+name: Weekly Benchmarks
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      model_size:
+        description: 'Model size to test'
+        required: true
+        default: 'small_gpu'
+        type: choice
+        options:
+        - small_gpu
+        - medium_gpu
+        - large_gpu
+      num_problems:
+        description: 'Number of problems to test'
+        required: true
+        default: '20'
+        type: string
+      strategies:
+        description: 'Strategies to test (comma-separated)'
+        required: true
+        default: 'self_consistency_small,deepconf_small,debate,tree'
+        type: string
+
+jobs:
+  comprehensive-benchmark:
+    runs-on: [self-hosted, gpu]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+    
+    - name: Set benchmark parameters
+      run: |
+        echo "MODEL_SIZE=${{ github.event.inputs.model_size || 'medium_gpu' }}" >> $GITHUB_ENV
+        echo "NUM_PROBLEMS=${{ github.event.inputs.num_problems || '50' }}" >> $GITHUB_ENV
+        echo "STRATEGIES=${{ github.event.inputs.strategies || 'self_consistency_small,self_consistency_large,deepconf_small,deepconf_large,debate,tree,graph' }}" >> $GITHUB_ENV
+    
+    - name: Run comprehensive GSM8K benchmark
+      run: |
+        python scripts/run_benchmarks.py \
+          --model $MODEL_SIZE \
+          --strategies $(echo $STRATEGIES | tr ',' ' ') \
+          --dataset sample \
+          --num-problems $NUM_PROBLEMS \
+          --output-dir benchmark_results/weekly \
+          --max-concurrent 2
+      timeout-minutes: 120
+    
+    - name: Generate benchmark report
+      run: |
+        python scripts/generate_report.py benchmark_results/weekly/
+      continue-on-error: true
+    
+    - name: Archive benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: weekly-benchmark-results-${{ env.MODEL_SIZE }}
+        path: |
+          benchmark_results/weekly/
+        retention-days: 90
+    
+    - name: Create issue on failure
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Weekly Benchmark Failed - ${process.env.MODEL_SIZE}`,
+            body: `The weekly benchmark run failed for model size: ${process.env.MODEL_SIZE}\n\nWorkflow run: ${context.payload.workflow_run?.html_url || 'N/A'}`,
+            labels: ['benchmark', 'bug']
+          })
+
+  a100-benchmark:
+    runs-on: [self-hosted, a100]
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && contains(github.event.inputs.model_size, 'large'))
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+        pip install psutil nvidia-ml-py
+    
+    - name: Run A100 performance benchmark
+      run: |
+        python scripts/run_benchmarks.py \
+          --model large_gpu \
+          --strategies self_consistency_large,deepconf_large,tree,graph \
+          --dataset sample \
+          --num-problems 100 \
+          --output-dir benchmark_results/a100 \
+          --max-concurrent 4
+      timeout-minutes: 180
+    
+    - name: Run A100 memory scaling test
+      run: |
+        pytest tests/performance/test_a100_performance.py::TestA100Performance::test_a100_memory_scaling -v
+      timeout-minutes: 30
+    
+    - name: Archive A100 results
+      uses: actions/upload-artifact@v3
+      with:
+        name: a100-benchmark-results
+        path: |
+          benchmark_results/a100/
+          performance_results/
+        retention-days: 90

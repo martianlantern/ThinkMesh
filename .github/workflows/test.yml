@@ -1,0 +1,209 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+    
+    - name: Run unit tests
+      run: |
+        pytest tests/unit/ -v --tb=short -m "unit and not gpu"
+    
+    - name: Run integration tests (CPU only)
+      run: |
+        pytest tests/integration/ -v --tb=short -m "integration and not gpu and not slow"
+
+  benchmark-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+    
+    - name: Run GSM8K benchmark tests (sample only)
+      run: |
+        pytest tests/benchmarks/test_gsm8k.py::TestGSM8KUtils -v --tb=short
+        pytest tests/benchmarks/test_gsm8k.py::TestGSM8KBenchmarks::test_gsm8k_sample_all_strategies -v --tb=short -k "not slow and not gpu"
+      timeout-minutes: 15
+
+  gpu-tests:
+    runs-on: [self-hosted, gpu]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: unit-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+    
+    - name: Check GPU availability
+      run: |
+        python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+        python -c "import torch; print(f'GPU count: {torch.cuda.device_count()}') if torch.cuda.is_available() else print('No GPU')"
+        
+    - name: Run GPU unit tests
+      run: |
+        pytest tests/unit/ -v --tb=short -m "unit and gpu" --timeout=300
+      timeout-minutes: 10
+    
+    - name: Run GPU integration tests  
+      run: |
+        pytest tests/integration/ -v --tb=short -m "integration and gpu and not slow" --timeout=600
+      timeout-minutes: 15
+    
+    - name: Run GPU benchmark tests
+      run: |
+        pytest tests/benchmarks/ -v --tb=short -m "benchmark and gpu and not slow and not a100" --timeout=900
+      timeout-minutes: 20
+
+  a100-performance:
+    runs-on: [self-hosted, a100]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [unit-tests, gpu-tests]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+        pip install psutil nvidia-ml-py  # For performance monitoring
+    
+    - name: Check A100 availability
+      run: |
+        python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+        python -c "import torch; print(f'GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB') if torch.cuda.is_available() else print('No GPU')"
+        nvidia-smi
+    
+    - name: Run A100 performance tests
+      run: |
+        pytest tests/performance/ -v --tb=short -m "performance and a100" --timeout=1800
+      timeout-minutes: 35
+    
+    - name: Run A100 GSM8K benchmarks
+      run: |
+        pytest tests/benchmarks/ -v --tb=short -m "benchmark and a100" --timeout=2400
+      timeout-minutes: 45
+    
+    - name: Archive performance results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: a100-performance-results
+        path: |
+          benchmark_results/
+          performance_results/
+        retention-days: 30
+
+  lint-and-type-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Run ruff linting
+      run: |
+        ruff check src/ tests/ --output-format=github
+    
+    - name: Run ruff formatting check
+      run: |
+        ruff format --check src/ tests/
+    
+    - name: Run mypy type checking
+      run: |
+        mypy src/thinkmesh/ --ignore-missing-imports
+      continue-on-error: true  # Type checking can be lenient initially
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,transformers]"
+        pip install coverage pytest-cov
+    
+    - name: Run tests with coverage
+      run: |
+        pytest tests/unit/ tests/integration/ --cov=src/thinkmesh --cov-report=xml --cov-report=term-missing -m "not gpu and not slow"
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
