@@ -1,5 +1,7 @@
 # ThinkMesh
 
+> Note: This repo is no longer maintained as there are now better alternatives available
+
 ThinkMesh is a Python library for running diverse reasoning paths in parallel with language models
 
 ## Installation
